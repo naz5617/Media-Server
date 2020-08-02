@@ -1,0 +1,83 @@
+#!/bin/bash
+
+#VARIABLES
+name=$(whoami)
+files="/home/$name/Media"
+ports=( 9000 9117 8989 7878 8686 3579 58846 8112 )  
+portcont=(9117 8989 7878 8686 3579 )
+namecont=(jackett sonarr radarr lidarr ombi )
+media=(Tv Movies Music )
+
+#CODE
+
+
+#Time Zone
+
+function tz {
+	tz=( $(timedatectl | grep "Time zone:") )
+	tz=${tz[2]}
+}
+
+#PORTS
+
+function ports {
+	for i in "${ports[@]}"
+	do
+		echo $i
+		sudo firewall-cmd --zone-public --permanent --add-ports=$i/tcp
+	done
+	sudo firewall-cmd --zone-public--permanent --add-interface=docker
+	sudo firewall-cmd --reload
+}
+
+#CONTAINERS
+
+function contain {
+	constant="-e PUID=1000 -e PGID=1000 -e Tz=$tz"
+	sudo docker run -d -p 9000:9000 -p 8000:8000 --name portainer --restart-always -v /var/run/docker.sock:/var/rundocker.sock -v portainer_data:/data portainer/portainer
+	sudo docker create --name=deluge --net-host $constant -v /home/$name/docker/deluge:/config -v /home/$name/Media/Downloads:/Media/Downloads --restart unless-stopped linuxserver/deluge
+
+	for i in "${namecont[@]}"
+	do
+		if [ ${namecount[i]} =="jackett" ] || [ ${namecount[i]}=="ombi" ]
+		then
+			sudo docker create --name=${namecont[i]} $constant -p ${portcont[i]} -v /home/$name/docker/${namecont[i]}:/config --restart unless-stopped linuxserver/${namecont[i]}
+		else 
+			sudo docker create --name=${namecont[i]} $constant -p ${portcont[i]} -v /home/$name/docker/${namecont[i]}:/config -v /home/$name/Media/${media[i-1]}:/Media/${media[i-1]} -v /home/$name/Media/Downloads:/Media/Downloads --restart unless-stopped linuxserver/${namecont[i]}  
+		fi
+	done
+	sudo docker create --name=plex $constant -e Version=docker -v /home/$name/docker/plex:/config -v /home/$name/Media/Anime:/data/anime -v /home/$name/Media/Movies:/data/movies -v /home/$name/Media/Music/:/data/music -v /home/$name/Media/Tv:/data/tvshows -v /home/$name/docker/transcode:/transcode --net=host --restart unless-stopped linuxserver/plex
+}
+
+#RUN
+tz
+ports
+contain
+
+#INFO: This program is download all the necessary software inside Docker containers to run an automated media server with minimal setup inside of a gui otherwise 
+#
+#	1. You can access any of these sites by going on the machine they are running and typing in localhost and then : plus whatever port they are running on.	
+#	Cheat sheet: Portainer=9000, Jackett=9117, Sonarr=8989, Radarr=7878, Lidarr=8686, Ombi=8686, plex=32400/web Deluge=8112
+#
+#	2. Then next steps are adding download clients in Radarr, Sonarr, and Lidarr, you do this by going to the Settings->Download Client and clicking the grey +
+#	fill out the name, host ip which will be the localhost or host ip of your machine, the port which will be 8112, and unless you change the default password 
+#	for deluge it will be deluge. Then test it, this will be the same for all three of these.
+#	
+#	3.The next step would be adding an indexer on Jackett, This would start by clicking the green + that says Add indexer, and then search if you have private 
+#	tracker or just add public trackers
+#
+#	4. The next step is adding your indexers to Radarr, Sonarr, Lidarr. This is done by going to Settings->Indexers, and clicking the grey +, and this menu 
+#	click Custom underneath Torznab input a name, and then open up jackett and inside of jackett and click copy Torznab feed and input that into the url slot
+#	also from Jacket grab the API key and input that into the slot for those.
+#
+#	5. This should finish setting up radarr, sonarr, lidarr completely.
+#
+#	6. Last thing to set up is Ombi when first accessing the site is giving it your plex information then when on Ombi's internal site go to settings and Media
+#	 Server, and access Plex give the ip address which will be localhost if you are on the system or the ip address of the system its on the port which is 32400,
+#	after this give this your username and password and load server and load libaries and test connectivity.
+#	 
+#	7. The next part of ombi is going to TV, and sonarr inside of that input the ip address for sonarr, as well and then the port 8989, and the api key for sonarr
+#	which will be under Settings->General->API Key. From this you load the folders and select the root folder for this and then test connectivity. Then follow through
+#	and do the same for radarr and lidarr. 
+#
+#
